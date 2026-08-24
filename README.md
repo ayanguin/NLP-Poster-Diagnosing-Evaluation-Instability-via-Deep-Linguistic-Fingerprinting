@@ -1,49 +1,71 @@
 # Diagnosing Evaluation Instability via Deep Linguistic Fingerprinting
 
-**Beyond "My Answer is C": Unpacking the Linguistic Mechanics of LLM Evaluation Instability**
+**NLP Poster Project — University of Trier**
 
 ## Overview
 
-Standard LLM evaluation often forces models into a rigid format — picking a multiple-choice letter or reading off the highest first-token probability. Prior work shows this constrained setup can disagree with what the model actually says when allowed to answer in open-ended text, with mismatch rates as high as 60%. This project asks *why*: what changes in the model's language itself when the constraint is lifted?
+LLM evaluation often forces a model into a rigid format — picking a multiple-choice letter, or reading off the highest first-token probability. Prior work shows this constrained setup can disagree sharply with what the model says when allowed to answer in open-ended text, with mismatch rates reported as high as 60%. This project asks whether that disagreement leaves a measurable **linguistic signature**: does the way a model *writes* its open-ended answer carry information about whether it's about to contradict its own first-token choice?
 
-We combine [elfen](https://github.com/mmilbig/elfen) (1,061 linguistic features across 11 areas), opinion/knowledge benchmarks (MMLU, OpinionQA, TruthfulQA), and stance-shift analysis to build **linguistic fingerprints** of LLM outputs under varying prompt constraints — and test whether those fingerprints can predict when a model is about to flip its answer or refuse.
+We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature-extraction library) with three evaluation benchmarks (MMLU, OpinionQA, TruthfulQA) across five instruction-tuned models to test this directly.
 
 ## Research Questions
 
-1. How do syntactic complexity, hedging, readability, and sentiment in open-ended LLM generations correlate with decision shifts (e.g., agreeing vs. disagreeing, answering vs. refusing)?
-2. Can a classifier trained on elfen linguistic features predict when a model is about to experience a **first-token vs. text mismatch**?
+1. **How do syntactic complexity, hedging, readability, and sentiment metrics of open-ended LLM generations correlate with decision shifts** (e.g., agreeing vs. disagreeing, or choosing an option vs. refusing)?
+2. **Can a classifier trained on elfen features predict when a model is about to experience a first-token vs. text mismatch?**
 
 ## Method
 
-**Models:** Llama-3-8B-Instruct, Mistral-7B-Instruct, Qwen2.5-1.5B-Instruct (run locally via vLLM)
+**Models:** Qwen (`QWEN`), SmolLM (`HuggingFaceTB`), Mistral (`mistralai`), Gemma (`google`), Llama (`meta-llama`) — run locally via vLLM.
 
-**Datasets:** MMLU, OpinionQA, TruthfulQA — stratified to a balanced N=900 (300 items per dataset, seed=42) to prevent MMLU's larger size from dominating aggregate metrics.
+**Datasets:** MMLU, OpinionQA, TruthfulQA, stratified to a balanced N=900 (300 items per dataset, seed=42) so no single benchmark dominates the aggregate metrics.
 
 **Pipeline:**
-1. **First-token probability** — prompt with the MCQ and inspect log-probabilities of the very first generated token (A/B/C/D/Refusal).
-2. **Unconstrained generation** — same prompt, open-ended ("take a clear stance"), higher `max_tokens` to allow full reasoning.
-3. **Classification** — map unconstrained text back to an MCQ option (LLM-judge or regex) and flag mismatches against the first-token answer.
-4. **Linguistic feature extraction** — run all open-ended outputs through elfen (readability, dependency tree depth, sentiment, hedge frequency, entropy, etc.).
-5. **Statistical analysis** — Mantel tests to compare correlation structures across constraint levels; Local Outlier Factor (LOF) to detect whether specific fingerprints (e.g., high hedge ratio) align with mismatches/stance-flips.
-
-**Metrics:** Mismatch Rate, Mantel Correlation Coefficient, Hedge Ratio, Logistic Regression Feature Importance.
+1. **First-token probability** — prompt each model with the MCQ and record the highest-probability first token (A/B/C/D/Refusal).
+2. **Unconstrained generation** — same question, open-ended instruction ("take a clear stance"), higher `max_tokens` to capture full reasoning.
+3. **Answer parsing** — map the unconstrained text back to an MCQ option (or flag as refusal), and label each row `is_mismatch` against the first-token answer.
+4. **Linguistic feature extraction** — run every open-ended response through elfen to extract linguistic features (readability, syntactic dependency structure, sentiment, hedging, entropy, psycholinguistic norms, etc.).
+5. **RQ1 — correlation analysis** — correlate each linguistic feature with `is_mismatch` to identify which features distinguish matched from mismatched responses.
+6. **RQ2 — classification** — train an L1-regularized logistic regression on the elfen feature set to predict `is_mismatch`, evaluated with 5-fold stratified cross-validation (ROC-AUC) and validated against a permutation-test null distribution (200 permutations) to confirm the signal is statistically above chance.
 
 ## Repository Structure
 
 ```
 .
-├── FinalScript.ipynb              # End-to-end inference + mismatch pipeline
-├── NLP-Elfen-Visualization.ipynb  # elfen feature extraction & visualization
-├── results/                       # Output data, figures, and analysis artifacts
+├── FinalScript.ipynb              # Inference pipeline: first-token + open-ended generation, mismatch labeling
+├── NLP-Elfen-Visualization.ipynb  # Feature extraction, RQ1 correlation analysis, RQ2 classifier + permutation test
+├── results/                       # Output CSVs (elfen features per model), figures, and analysis artifacts
 └── README.md
 ```
 
-## Poster Visuals
+## How to Reproduce
 
-- **Heatmap comparison** — elfen correlation matrices for Forced-Choice vs. Open-Ended outputs across 11 feature areas.
-- **t-SNE projection** — clustering of refusals and stance-flips in linguistic feature space.
-- **Feature importance bar chart** — which linguistic signals (e.g., hedge frequency, dependency depth) best predict a first-token/text mismatch.
+1. Install dependencies: `pip install polars elfen spacy scikit-learn matplotlib seaborn` and `python -m spacy download en_core_web_sm`.
+2. Run `FinalScript.ipynb` to generate the per-model `*_dataset_experiment_results.csv` files (first-token vs. unconstrained answers, mismatch labels).
+3. Run `NLP-Elfen-Visualization.ipynb` top to bottom:
+   - Feature extraction produces `results/{model}_sample_features.csv` per model.
+   - RQ1 analysis produces correlation rankings and feature-importance plots.
+   - RQ2 analysis (`mismatch_classifier`) produces per-model AUC, permutation p-value, and top classifier coefficients, saved to `results/`.
 
-## Key Takeaway
+## Results Summary
 
-Mismatches between forced and unconstrained model answers aren't random — they leave a measurable linguistic signature. Identifying that signature is a step toward diagnosing *why* evaluation results shift with prompt format, not just *that* they do.
+| Model | Mismatch Rate | Classifier AUC (5-fold CV) | Permutation p-value |
+|---|---|---|---|
+| QWEN | 46.3% | 0.572 | 0.010 |
+| HuggingFaceTB | 49.3% | 0.630 | 0.005 |
+| mistralai | 29.3% | 0.660 | 0.005 |
+| google | 25.1% | 0.608 | 0.005 |
+| meta-llama | 33.9% | 0.661 | 0.005 |
+
+**RQ1:** Several linguistic features (readability indices, word length, lexical density, age-of-acquisition, sentiment, entity/dependency counts) show statistically detectable but modest correlations with mismatch (|r| ≈ 0.10–0.21). The specific features that matter most differ across models, suggesting no single universal linguistic fingerprint.
+
+**RQ2:** An L1-regularized logistic regression trained on elfen features predicts mismatch significantly above chance for all five models (permutation test, all p < 0.01). Discriminative power is modest in absolute terms (AUC 0.57–0.66), indicating a real but partial linguistic signal — most of the variance in mismatch is not explained by surface linguistic form alone.
+
+## Limitations
+
+- Model families differ in architecture, alignment training, and parameter scale simultaneously; AUC differences across models cannot be attributed to any single factor (e.g., scale) without a controlled same-family, multi-scale comparison.
+- Supplementary analyses (Local Outlier Factor outlier detection, Mantel correlation-structure comparison) did not show meaningful alignment with mismatch and are not treated as supporting evidence for either RQ.
+- Correlation and classifier results reflect this specific balanced sample (N=900 per model) and prompt design; results may not generalize to other datasets or prompting strategies.
+
+## Poster
+
+This repository accompanies a poster submitted for the NLP module examination. Poster title: *Beyond "My Answer is C": Unpacking the Linguistic Mechanics of LLM Evaluation Instability.*
