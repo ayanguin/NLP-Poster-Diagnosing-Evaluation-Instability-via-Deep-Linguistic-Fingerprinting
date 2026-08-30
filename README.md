@@ -4,9 +4,9 @@
 
 ## Overview
 
-LLM evaluation often forces a model into a rigid format — picking a multiple-choice letter, or reading off the highest first-token probability. Prior work shows this constrained setup can disagree sharply with what the model says when allowed to answer in open-ended text, with mismatch rates reported as high as 60%. This project asks whether that disagreement leaves a measurable **linguistic signature**: does the way a model *writes* its open-ended answer carry information about whether it's about to contradict its own first-token choice?
+LLM evaluation often forces a model into a rigid format — picking a multiple-choice letter, or reading off the highest first-token probability. **Wang et al. (2024)** showed that this constrained setup can disagree sharply with what the model says when allowed to answer in open-ended text, with mismatch rates reported as high as 60%. Their work quantifies *how much* mismatch occurs and identifies contributing factors (refusal behaviour, prompt constraint level, decoding temperature) — but does not address *why* a given response mismatches. This project asks whether that disagreement leaves a measurable **linguistic signature**: does the way a model *writes* its open-ended answer carry information about whether it's about to contradict its own first-token choice?
 
-We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature-extraction library) with three evaluation benchmarks (MMLU, OpinionQA, TruthfulQA) across five instruction-tuned models to test this directly.
+We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature-extraction library) with three evaluation benchmarks (MMLU, OpinionQA, TruthfulQA) across five instruction-tuned models. Rather than re-measuring how much mismatch exists (Wang et al.'s contribution), we test this directly — a question orthogonal to their causal factors.
 
 ## Research Questions
 
@@ -34,6 +34,7 @@ We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature
 ├── FinalScript.ipynb              # Inference pipeline: first-token + open-ended generation, mismatch labeling
 ├── NLP-Elfen-Visualization.ipynb  # Feature extraction, RQ1 correlation analysis, RQ2 classifier + permutation test
 ├── results/                       # Output CSVs (elfen features per model), figures, and analysis artifacts
+├── feature_importance_grid.png  # Combined 2×3 grid of top-8 elfen feature coefficients per model (shared x-axis scale for direct cross-model comparison; used in the poster)
 └── README.md
 ```
 
@@ -45,6 +46,7 @@ We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature
    - Feature extraction produces `results/{model}_sample_features.csv` per model.
    - RQ1 analysis produces correlation rankings and feature-importance plots.
    - RQ2 analysis (`mismatch_classifier`) produces per-model AUC, permutation p-value, and top classifier coefficients, saved to `results/`.
+   - The final cell combines each model's top-8 classifier coefficients into a single comparison figure, `feature_importance_grid.png`, rather than five separate per-model plots — this is what's used in the poster's Figures section.
 
 ## Results Summary
 
@@ -56,7 +58,7 @@ We combine [elfen](https://github.com/mmilbig/elfen) (a large linguistic feature
 | google | 25.1% | 0.608 | 0.005 |
 | meta-llama | 33.9% | 0.661 | 0.005 |
 
-**RQ1:** Several linguistic features (readability indices, word length, lexical density, age-of-acquisition, sentiment, entity/dependency counts) show statistically detectable but modest correlations with mismatch (|r| ≈ 0.10–0.21). The specific features that matter most differ across models, suggesting no single universal linguistic fingerprint.
+**RQ1:** Several linguistic features (readability indices, word length, lexical density, age-of-acquisition, sentiment, entity/dependency counts) show statistically detectable but modest correlations with mismatch (|r| ≈ 0.10–0.21). Which specific features matter differs almost entirely across models (see `feature_importance_grid.png`) — no single universal linguistic fingerprint. Features do, however, cluster into recurring domains (sensorimotor/perceptual grounding, emotion intensity, syntactic dependency structure), even though the exact feature within each domain is model-idiosyncratic.
 
 **RQ2:** An L1-regularized logistic regression trained on elfen features predicts mismatch significantly above chance for all five models (permutation test, all p < 0.01). Discriminative power is modest in absolute terms (AUC 0.57–0.66), indicating a real but partial linguistic signal — most of the variance in mismatch is not explained by surface linguistic form alone.
 
